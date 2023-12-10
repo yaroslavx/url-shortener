@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 
 	"log/slog"
+	ssogrpc "url-shortener/internal/clients/sso/grpc"
 	"url-shortener/internal/config"
 	"url-shortener/internal/http-server/handlers/redirect"
 	"url-shortener/internal/http-server/handlers/url/save"
@@ -20,8 +22,8 @@ import (
 
 const (
 	envLocal = "local"
-	envDev = "dev"
-	envProd = "prod"
+	envDev   = "dev"
+	envProd  = "prod"
 )
 
 func main() {
@@ -33,6 +35,14 @@ func main() {
 
 	log.Info("starting service", slog.String("env", cfg.Env))
 	log.Debug("debug messages are enabled")
+
+	ssoClient, err := ssogrpc.New(
+		context.Background(),
+		log,
+		cfg.Clients.SSO.Address,
+		cfg.Clients.SSO.Timeout,
+		cfg.Clients.SSO.RetriesCount,
+	)
 
 	storage, err := sqlite.New(cfg.StoragePath)
 	if err != nil {
@@ -49,7 +59,7 @@ func main() {
 	router.Use(middleware.URLFormat)
 
 	router.Route("/url", func(r chi.Router) {
-		r.Use(middleware.BasicAuth("url-shortener", map[string]string {
+		r.Use(middleware.BasicAuth("url-shortener", map[string]string{
 			cfg.HTTPServer.User: cfg.HTTPServer.Password,
 		}))
 
@@ -60,12 +70,12 @@ func main() {
 
 	log.Info("starting server", slog.String("address", cfg.Address))
 
-	srv := &http.Server {
-		Addr: cfg.Address,
-		Handler: router,
-		ReadTimeout: cfg.HTTPServer.Timeout,
+	srv := &http.Server{
+		Addr:         cfg.Address,
+		Handler:      router,
+		ReadTimeout:  cfg.HTTPServer.Timeout,
 		WriteTimeout: cfg.HTTPServer.Timeout,
-		IdleTimeout: cfg.HTTPServer.IdleTimeout,
+		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
 	}
 
 	if err := srv.ListenAndServe(); err != nil {
